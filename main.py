@@ -1,4 +1,17 @@
 import psycopg2
+from abc import ABC, abstractmethod
+
+
+class Observer(ABC):
+    @abstractmethod
+    def update(self, hint_text):
+        pass
+
+
+class HintStrategy(Observer):
+    @abstractmethod
+    def get_hints(self, hints):
+        pass
 
 
 class Command:
@@ -31,14 +44,17 @@ class OpenDatabaseFileCommand(Command):
         self.editor.open_database_file(file_name)
 
 
-class HintStrategy:
-    def get_hints(self, hints):
-        pass
-
-
 class SimpleHintStrategy(HintStrategy):
+    def __init__(self, editor):
+        self.editor = editor
+        self.hint_text = ""
+
     def get_hints(self, hints):
         return [hint.hint_text for hint in hints]
+
+    def update(self, hint_text):
+        self.hint_text = hint_text
+        print(f"Підказка додана: {hint_text}")
 
 
 class AdvancedHintStrategy(HintStrategy):
@@ -97,6 +113,37 @@ class PostgreSQLDatabaseStrategy(DatabaseStrategy):
         else:
             raise Exception("Not connected to the database.")
 
+    def save_hint_to_database(self, file_name, hint_text):
+        if self.connection:
+            file_id = self.get_file_id(file_name)
+
+            if file_id is not None:
+                with self.connection.cursor() as cursor:
+                    cursor.execute("INSERT INTO hints (hint_text, file_id) VALUES (%s, %s)", (hint_text, file_id))
+                self.connection.commit()
+            else:
+                raise Exception("Failed to get or create file_id.")
+        else:
+            raise Exception("Not connected to the database.")
+
+    def get_file_id(self, file_name):
+        if self.connection:
+            with self.connection.cursor() as cursor:
+                cursor.execute("SELECT id FROM text_files WHERE file_name = %s", (file_name,))
+                result = cursor.fetchone()
+            return result[0] if result else None
+        else:
+            raise Exception("Not connected to the database.")
+
+    def get_hints_by_file_id(self, file_id):
+        if self.connection:
+            with self.connection.cursor() as cursor:
+                cursor.execute("SELECT id, hint_text FROM hints WHERE file_id = %s", (file_id,))
+                hints = cursor.fetchall()
+            return [{'hint_id': hint[0], 'hint_text': hint[1]} for hint in hints]
+        else:
+            raise Exception("Not connected to the database.")
+
 
 class BookmarkStrategy:
     def process_bookmarks(self, bookmarks):
@@ -130,6 +177,7 @@ class DefaultSnippetStrategy(SnippetStrategy):
 
 class TextEditor:
     def __init__(self, file_content="", encoding="utf-8"):
+        self.current_file_id = None
         self.file_content = file_content
         self.encoding = encoding
         self.syntax_highlighter_strategy = None
@@ -143,6 +191,17 @@ class TextEditor:
         self.macros = []
         self.snippets = []
         self.commands = {}
+        self.observers = []
+        self.local_hints = []
+        self.current_file_name = None
+        self.local_hint_id = 0
+
+    def add_observer(self, observer):
+        self.observers.append(observer)
+
+    def notify_observers(self, hint_text):
+        for observer in self.observers:
+            observer.update(hint_text)
 
     def set_syntax_highlighter_strategy(self, syntax_highlighter_strategy):
         self.syntax_highlighter_strategy = syntax_highlighter_strategy
@@ -179,6 +238,7 @@ class TextEditor:
                     self.file_content = file_content
                     print(f"File '{file_name}' opened successfully. Content:")
                     print(file_content)
+                    self.current_file_id = self.database_strategy.get_file_id(file_name)
                 else:
                     print(f"File '{file_name}' not found in the database.")
             else:
@@ -195,9 +255,6 @@ class TextEditor:
         except Exception as e:
             print(f"An error occurred while getting file content: {e}")
             return None
-
-    def save_file(self, file_path):
-        save_file(file_path, self.file_content, self.encoding)
 
     def edit_text(self, changes):
         pass
@@ -223,20 +280,16 @@ class TextEditor:
             self.hints = self.hint_strategy.get_hints(self.hints)
             return self.hints
 
-    def save_to_database(self):
-        if self.database_strategy:
-            self.database_strategy.connect({
-                "dbname": "trpz",
-                "user": "postgres",
-                "password": "postgres",
-                "host": "localhost",
-                "port": "5432"
-            })
-            self.database_strategy.save_to_database(self.file_content)
-
     def input_text(self):
-        new_text = input("Enter text: ")
-        self.file_content += new_text
+        while True:
+            new_text = input("Enter text: ")
+            if new_text.strip().lower() == '/finish':
+                break
+            elif new_text.strip().lower() == '/hint':
+                hint_text = input("Enter hint text: ")
+                self.local_hints.append(hint_text)
+            else:
+                self.file_content += new_text + '\n'
 
     def display_file_list(self):
         try:
@@ -261,6 +314,7 @@ class TextEditor:
 
     def create_new_file(self):
         file_name = input("Enter the name of the new file: ")
+        self.current_file_name = file_name
 
         try:
             if self.database_strategy:
@@ -274,12 +328,23 @@ class TextEditor:
                 self.database_strategy.connect(db_params)
 
                 # Введення тексту вручну
-                print("Enter the content of the file. Enter 'EOF' on a new line to finish:")
+                print("Enter the content of the file. Enter '/finish' on a new line to finish:")
                 lines = []
                 while True:
                     line = input()
-                    if line.strip().lower() == 'eof':
+                    if line.strip().lower() == '/finish':
                         break
+                    elif line.strip().lower() == '/hint':
+                        hint_text = input("Введіть текст підказки: ")
+                        self.local_hint_id += 1
+                        # file_id = self.database_strategy.get_file_id(file_name)
+                        # self.database_strategy.save_hint_to_database(file_id, hint_text)
+                        self.local_hints.append({
+                            'hint_id': self.local_hint_id,
+                            'hint_text': hint_text
+                        })
+                        print(f"Підказка '{hint_text}' збережена.")
+                        continue
                     lines.append(line)
 
                 # Об'єднання рядків у вміст файла
@@ -287,6 +352,9 @@ class TextEditor:
 
                 # Збереження вмісту у базу даних
                 self.database_strategy.save_to_database(file_name, self.file_content)
+                self.current_file_id = self.database_strategy.get_file_id(file_name)
+                for hint in self.local_hints:
+                    self.database_strategy.save_hint_to_database(file_name, hint.hint_text)
                 print(f"File '{file_name}' created and saved to the database successfully.")
             else:
                 print("Database strategy not set. Unable to save to the database.")
@@ -305,6 +373,7 @@ class TextEditor:
         print("3. Display current content")
         print("4. Display File List")
         print("5. Open File from Database")
+        print("Type '/hints' to check for current file")
 
     def run_editor(self):
         self.set_command("1", CreateNewFileCommand(self))
@@ -324,6 +393,13 @@ class TextEditor:
             elif user_input == "/exit":
                 print("Exiting the text editor.")
                 break
+            elif user_input == "/hints":
+                if self.current_file_id:
+                    hints = db_strategy.get_hints_by_file_id(self.current_file_id)
+                    for hint in hints:
+                        print(f"Hint ID: {hint['hint_id']}, Hint Text: {hint['hint_text']}")
+                else:
+                    print("Choose a file first!")
             else:
                 print("Unknown command. Type '/menu' for the menu or '/exit' to exit.")
 
@@ -331,18 +407,10 @@ class TextEditor:
         self.commands[command_key] = command
 
 
-def read_file(file_path, encoding):
-    with open(file_path, 'r', encoding=encoding) as file:
-        return file.read()
-
-
-def save_file(file_path, content, encoding):
-    with open(file_path, 'w', encoding=encoding) as file:
-        file.write(content)
-
-
 editor = TextEditor()
 db_strategy = PostgreSQLDatabaseStrategy()
 editor.set_database_strategy(db_strategy)
+hint_strategy = SimpleHintStrategy(editor)
+editor.add_observer(hint_strategy)
 editor.display_prompts()
 editor.run_editor()
