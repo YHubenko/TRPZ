@@ -8,6 +8,43 @@ class Observer(ABC):
         pass
 
 
+class PathSubject:
+    def __init__(self):
+        self.observers = []
+
+    def add_observer(self, observer):
+        self.observers.append(observer)
+
+    def remove_observer(self, observer):
+        self.observers.remove(observer)
+
+    def notify_observers(self, file_path):
+        for observer in self.observers:
+            observer.update(file_path)
+
+
+class PathObserver(Observer):
+    def __init__(self, editor):
+        self.editor = editor
+
+    def update(self, file_path):
+        self.editor.open_file_by_path(file_path)
+
+
+class EditorObserver(Observer):
+    def update(self, changes):
+        print(f"Editor received an update: {changes}")
+
+    def start_edit_mode(self):
+        print("Entering edit mode. Type '/finish' to exit editing.")
+
+    def end_edit_mode(self):
+        print("Exiting edit mode.")
+
+    def open_file_by_path(self, file_path):
+        print(f"Opening file by path: {file_path}")
+
+
 class HintStrategy(Observer):
     @abstractmethod
     def get_hints(self, hints):
@@ -53,8 +90,9 @@ class SimpleHintStrategy(HintStrategy):
         return [hint.hint_text for hint in hints]
 
     def update(self, hint_text):
-        self.hint_text = hint_text
-        print(f"Підказка додана: {hint_text}")
+        if hint_text and hint_text.strip().lower() == '/hint':
+            self.hint_text = hint_text
+            print(f"Підказка додана: {self.hint_text}")
 
 
 class AdvancedHintStrategy(HintStrategy):
@@ -87,13 +125,36 @@ class PostgreSQLDatabaseStrategy(DatabaseStrategy):
     def connect(self, connection_params):
         self.connection = psycopg2.connect(**connection_params)
 
-    def save_to_database(self, file_name, file_content):
+    def create_file_in_database(self, file_name, file_content):
         if self.connection:
             with self.connection.cursor() as cursor:
                 cursor.execute("INSERT INTO text_files (file_name, content) VALUES (%s, %s)", (file_name, file_content))
             self.connection.commit()
         else:
             raise Exception("Not connected to the database.")
+
+    def update_file_in_database(self, file_name, file_content):
+        if self.connection:
+            file_id = self.get_file_id(file_name)
+
+            if file_id is not None:
+                with self.connection.cursor() as cursor:
+                    cursor.execute("UPDATE text_files SET content = %s WHERE id = %s", (file_content, file_id))
+                self.connection.commit()
+            else:
+                raise Exception("Failed to get file_id for update.")
+        else:
+            raise Exception("Not connected to the database.")
+
+    def save_to_database(self, file_name, file_content):
+        if self.connection:
+            if self.get_file_id(file_name) is not None:
+                self.update_file_in_database(file_name, file_content)
+            else:
+                self.create_file_in_database(file_name, file_content)
+        else:
+            raise Exception("Not connected to the database.")
+
 
     def get_file_list(self):
         if self.connection:
@@ -177,6 +238,7 @@ class DefaultSnippetStrategy(SnippetStrategy):
 
 class TextEditor:
     def __init__(self, file_content="", encoding="utf-8"):
+        super().__init__()
         self.current_file_id = None
         self.file_content = file_content
         self.encoding = encoding
@@ -191,17 +253,26 @@ class TextEditor:
         self.macros = []
         self.snippets = []
         self.commands = {}
-        self.observers = []
         self.local_hints = []
         self.current_file_name = None
         self.local_hint_id = 0
+        self.observers = [EditorObserver()]
 
     def add_observer(self, observer):
         self.observers.append(observer)
 
-    def notify_observers(self, hint_text):
+    def notify_observers(self, changes):
         for observer in self.observers:
-            observer.update(hint_text)
+            observer.update(changes)
+
+    def open_file_by_path(self, file_path):
+        try:
+            with open(file_path, 'r') as file:
+                self.file_content = file.read()
+            print(f"File '{file_path}' opened successfully. Content:")
+            print(self.file_content)
+        except Exception as e:
+            print(f"An error occurred while opening the file: {e}")
 
     def set_syntax_highlighter_strategy(self, syntax_highlighter_strategy):
         self.syntax_highlighter_strategy = syntax_highlighter_strategy
@@ -239,6 +310,7 @@ class TextEditor:
                     print(f"File '{file_name}' opened successfully. Content:")
                     print(file_content)
                     self.current_file_id = self.database_strategy.get_file_id(file_name)
+                    self.current_file_name = file_name
                 else:
                     print(f"File '{file_name}' not found in the database.")
             else:
@@ -256,8 +328,44 @@ class TextEditor:
             print(f"An error occurred while getting file content: {e}")
             return None
 
-    def edit_text(self, changes):
-        pass
+    def edit_mode(self):
+        if not self.current_file_name:
+            print("No file opened. Please open a file first.")
+            return
+
+        print("Entering edit mode. Type '/finish' to exit editing.")
+
+        while True:
+            new_text = input("")
+            if new_text.strip().lower() == '/finish':
+                changes = "Exiting edit mode."
+                self.notify_observers(changes)
+                self.update_file_in_database()
+                break
+            elif new_text.strip().lower() == '/hint':
+                hint_text = input("Enter hint text: ")
+                self.local_hints.append({'hint_text': hint_text})
+                changes = f"Hint added: {hint_text}"
+                self.notify_observers(changes)
+            else:
+                self.file_content += new_text + '\n'
+                changes = new_text
+                self.notify_observers(changes)
+
+    def update_file_in_database(self):
+        if self.database_strategy and self.current_file_name:
+            file_name = self.current_file_name
+            file_content = self.file_content
+
+            try:
+                self.database_strategy.save_to_database(file_name, file_content)
+                for hint in self.local_hints:
+                    self.database_strategy.save_hint_to_database(file_name, hint['hint_text'])
+                print(f"File '{file_name}' updated and saved to the database successfully.")
+            except Exception as e:
+                print(f"An error occurred while saving to the database: {e}")
+        else:
+            print("Database strategy not set or no file is currently open.")
 
     def execute_syntax_highlighting(self):
         if self.syntax_highlighter_strategy:
@@ -327,7 +435,6 @@ class TextEditor:
                 }
                 self.database_strategy.connect(db_params)
 
-                # Введення тексту вручну
                 print("Enter the content of the file. Enter '/finish' on a new line to finish:")
                 lines = []
                 while True:
@@ -337,8 +444,6 @@ class TextEditor:
                     elif line.strip().lower() == '/hint':
                         hint_text = input("Введіть текст підказки: ")
                         self.local_hint_id += 1
-                        # file_id = self.database_strategy.get_file_id(file_name)
-                        # self.database_strategy.save_hint_to_database(file_id, hint_text)
                         self.local_hints.append({
                             'hint_id': self.local_hint_id,
                             'hint_text': hint_text
@@ -347,14 +452,12 @@ class TextEditor:
                         continue
                     lines.append(line)
 
-                # Об'єднання рядків у вміст файла
                 self.file_content = '\n'.join(lines)
 
-                # Збереження вмісту у базу даних
                 self.database_strategy.save_to_database(file_name, self.file_content)
                 self.current_file_id = self.database_strategy.get_file_id(file_name)
                 for hint in self.local_hints:
-                    self.database_strategy.save_hint_to_database(file_name, hint.hint_text)
+                    self.database_strategy.save_hint_to_database(file_name, hint['hint_text'])
                 print(f"File '{file_name}' created and saved to the database successfully.")
             else:
                 print("Database strategy not set. Unable to save to the database.")
@@ -369,7 +472,7 @@ class TextEditor:
     def display_menu(self):
         print("\nMenu:")
         print("1. Create a new file")
-        # print("2. Open an existing file")
+        print("2. Open an existing file")
         print("3. Display current content")
         print("4. Display File List")
         print("5. Open File from Database")
@@ -377,7 +480,6 @@ class TextEditor:
 
     def run_editor(self):
         self.set_command("1", CreateNewFileCommand(self))
-        # self.set_command("2", OpenFileCommand(self, ""))
         self.set_command("4", DisplayFileListCommand(self))
         self.set_command("5", OpenDatabaseFileCommand(self))
 
@@ -388,8 +490,13 @@ class TextEditor:
                 self.display_menu()
             elif user_input in self.commands:
                 self.commands[user_input].execute()
+            elif user_input == "2":
+                path = input("Enter path to file:")
+                self.open_file_by_path(path)
             elif user_input == "3":
                 print("Current text content:", self.file_content)
+            elif user_input == "/edit":
+                self.edit_mode()
             elif user_input == "/exit":
                 print("Exiting the text editor.")
                 break
@@ -412,5 +519,8 @@ db_strategy = PostgreSQLDatabaseStrategy()
 editor.set_database_strategy(db_strategy)
 hint_strategy = SimpleHintStrategy(editor)
 editor.add_observer(hint_strategy)
+editor.add_observer(EditorObserver())
+path_observer = PathObserver(editor)
+editor.add_observer(path_observer)
 editor.display_prompts()
 editor.run_editor()
