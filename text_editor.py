@@ -1,5 +1,7 @@
 import os
-
+from pygments import highlight
+from pygments.formatters.terminal import TerminalFormatter
+from pygments.lexers.python import PythonLexer
 from command import CreateNewFileCommand, DisplayFileListCommand, OpenDatabaseFileCommand
 from hint_strategy import SimpleHintStrategy
 from observer import EditorObserver, PathObserver
@@ -11,7 +13,6 @@ class TextEditor:
         self.current_file_id = None
         self.file_content = file_content
         self.encoding = encoding
-        self.syntax_highlighter_strategy = None
         self.bookmark_strategy = None
         self.macro_strategy = None
         self.snippet_strategy = None
@@ -24,6 +25,7 @@ class TextEditor:
         self.commands = {}
         self.local_hints = []
         self.current_file_name = None
+        self.current_file_path = None
         self.local_hint_id = 0
         self.observers = [EditorObserver()]
 
@@ -36,6 +38,7 @@ class TextEditor:
 
     def open_file_by_path(self, file_path):
         try:
+            self.current_file_path = file_path
             file_name = os.path.basename(file_path)
             file_name_without_extension = os.path.splitext(file_name)[0]
 
@@ -53,20 +56,13 @@ class TextEditor:
 
             if self.database_strategy:
                 if self.database_strategy.get_file_id(file_name_without_extension) is None:
-                    self.current_file_name = file_name_without_extension
-                    self.update_file_in_database()
-                    self.open_database_file(file_path)
+                    self.database_strategy.create_file_in_database(file_name_without_extension, self.file_content)
                 else:
-                    self.open_database_file(file_path)
-
-            with open(file_path, 'w') as file:
-                file.write(self.file_content)
+                    self.database_strategy.save_to_database(file_name_without_extension, self.file_content)
+                self.open_database_file(file_path)
 
         except Exception as e:
             print(f"An error occurred while opening the file: {e}")
-
-    def set_syntax_highlighter_strategy(self, syntax_highlighter_strategy):
-        self.syntax_highlighter_strategy = syntax_highlighter_strategy
 
     def set_bookmark_strategy(self, bookmark_strategy):
         self.bookmark_strategy = bookmark_strategy
@@ -102,7 +98,7 @@ class TextEditor:
                 if file_content is not None:
                     self.file_content = file_content
                     print(f"File '{file_name_without_extension}' opened successfully. Content:")
-                    print(file_content)
+                    print(highlight(file_content, PythonLexer(), TerminalFormatter()))
                     self.current_file_id = self.database_strategy.get_file_id(file_name_without_extension)
                     self.current_file_name = file_name_without_extension
                 else:
@@ -146,8 +142,14 @@ class TextEditor:
         if self.database_strategy and self.current_file_name:
             file_name = self.current_file_name
             file_content = self.file_content
+            file_path = self.current_file_path
+            file_name_by_path = os.path.basename(file_path)
+            file_name_without_extension = os.path.splitext(file_name_by_path)[0]
 
             try:
+                if file_name_without_extension == file_name:
+                    with open(file_path, 'w') as file:
+                        file.write(self.file_content)
                 self.database_strategy.save_to_database(file_name, file_content)
                 for hint in self.local_hints:
                     self.database_strategy.save_hint_to_database(file_name, hint['hint_text'])
@@ -156,10 +158,6 @@ class TextEditor:
                 print(f"An error occurred while saving to the database: {e}")
         else:
             print("Database strategy not set or no file is currently open.")
-
-    def execute_syntax_highlighting(self):
-        if self.syntax_highlighter_strategy:
-            self.syntax_highlighter_strategy.highlight(self.file_content)
 
     def process_bookmarks(self):
         if self.bookmark_strategy:
@@ -292,7 +290,8 @@ class TextEditor:
                 path = input("Enter path to file: ")
                 self.open_file_by_path(path)
             elif user_input == "3":
-                print("Current text content:", self.file_content)
+                print("Current text content:")
+                print(highlight(self.file_content, PythonLexer(), TerminalFormatter()))
             elif user_input == "/edit":
                 self.edit_mode()
             elif user_input == "/exit":
