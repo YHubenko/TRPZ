@@ -1,5 +1,6 @@
+import os
+from abc import abstractmethod, ABC
 import psycopg2
-from abc import ABC, abstractmethod
 
 
 class Observer(ABC):
@@ -28,7 +29,8 @@ class PathObserver(Observer):
         self.editor = editor
 
     def update(self, file_path):
-        self.editor.open_file_by_path(file_path)
+        if file_path and os.path.exists(file_path):
+            self.editor.open_file_by_path(file_path)
 
 
 class EditorObserver(Observer):
@@ -43,12 +45,6 @@ class EditorObserver(Observer):
 
     def open_file_by_path(self, file_path):
         print(f"Opening file by path: {file_path}")
-
-
-class HintStrategy(Observer):
-    @abstractmethod
-    def get_hints(self, hints):
-        pass
 
 
 class Command:
@@ -79,6 +75,13 @@ class OpenDatabaseFileCommand(Command):
     def execute(self):
         file_name = input("Enter the name of the file: ")
         self.editor.open_database_file(file_name)
+
+
+
+class HintStrategy(Observer):
+    @abstractmethod
+    def get_hints(self, hints):
+        pass
 
 
 class SimpleHintStrategy(HintStrategy):
@@ -118,6 +121,36 @@ class DatabaseStrategy:
         pass
 
 
+class BookmarkStrategy:
+    def process_bookmarks(self, bookmarks):
+        pass
+
+
+class DefaultBookmarkStrategy(BookmarkStrategy):
+    def process_bookmarks(self, bookmarks):
+        pass
+
+
+class MacroStrategy:
+    def execute_macros(self, macros):
+        pass
+
+
+class DefaultMacroStrategy(MacroStrategy):
+    def execute_macros(self, macros):
+        pass
+
+
+class SnippetStrategy:
+    def apply_snippets(self, snippets):
+        pass
+
+
+class DefaultSnippetStrategy(SnippetStrategy):
+    def apply_snippets(self, snippets):
+        pass
+
+
 class PostgreSQLDatabaseStrategy(DatabaseStrategy):
     def __init__(self):
         self.connection = None
@@ -154,7 +187,6 @@ class PostgreSQLDatabaseStrategy(DatabaseStrategy):
                 self.create_file_in_database(file_name, file_content)
         else:
             raise Exception("Not connected to the database.")
-
 
     def get_file_list(self):
         if self.connection:
@@ -206,36 +238,6 @@ class PostgreSQLDatabaseStrategy(DatabaseStrategy):
             raise Exception("Not connected to the database.")
 
 
-class BookmarkStrategy:
-    def process_bookmarks(self, bookmarks):
-        pass
-
-
-class DefaultBookmarkStrategy(BookmarkStrategy):
-    def process_bookmarks(self, bookmarks):
-        pass
-
-
-class MacroStrategy:
-    def execute_macros(self, macros):
-        pass
-
-
-class DefaultMacroStrategy(MacroStrategy):
-    def execute_macros(self, macros):
-        pass
-
-
-class SnippetStrategy:
-    def apply_snippets(self, snippets):
-        pass
-
-
-class DefaultSnippetStrategy(SnippetStrategy):
-    def apply_snippets(self, snippets):
-        pass
-
-
 class TextEditor:
     def __init__(self, file_content="", encoding="utf-8"):
         super().__init__()
@@ -267,10 +269,32 @@ class TextEditor:
 
     def open_file_by_path(self, file_path):
         try:
+            file_name = os.path.basename(file_path)
+            file_name_without_extension = os.path.splitext(file_name)[0]
+
             with open(file_path, 'r') as file:
                 self.file_content = file.read()
-            print(f"File '{file_path}' opened successfully. Content:")
-            print(self.file_content)
+
+            if self.database_strategy and not self.database_strategy.connection:
+                self.database_strategy.connect({
+                    "dbname": "trpz",
+                    "user": "postgres",
+                    "password": "postgres",
+                    "host": "localhost",
+                    "port": "5432"
+                })
+
+            if self.database_strategy:
+                if self.database_strategy.get_file_id(file_name_without_extension) is None:
+                    self.current_file_name = file_name_without_extension
+                    self.update_file_in_database()
+                    self.open_database_file(file_path)
+                else:
+                    self.open_database_file(file_path)
+
+            with open(file_path, 'w') as file:
+                file.write(self.file_content)
+
         except Exception as e:
             print(f"An error occurred while opening the file: {e}")
 
@@ -292,8 +316,11 @@ class TextEditor:
     def set_database_strategy(self, database_strategy):
         self.database_strategy = database_strategy
 
-    def open_database_file(self, file_name):
+    def open_database_file(self, file_path):
         try:
+            file_name = os.path.basename(file_path)
+            file_name_without_extension = os.path.splitext(file_name)[0]
+
             if self.database_strategy and not self.database_strategy.connection:
                 self.database_strategy.connect({
                     "dbname": "trpz",
@@ -304,15 +331,15 @@ class TextEditor:
                 })
 
             if self.database_strategy:
-                file_content = self.database_strategy.get_file_content(file_name)
+                file_content = self.database_strategy.get_file_content(file_name_without_extension)
                 if file_content is not None:
                     self.file_content = file_content
-                    print(f"File '{file_name}' opened successfully. Content:")
+                    print(f"File '{file_name_without_extension}' opened successfully. Content:")
                     print(file_content)
-                    self.current_file_id = self.database_strategy.get_file_id(file_name)
-                    self.current_file_name = file_name
+                    self.current_file_id = self.database_strategy.get_file_id(file_name_without_extension)
+                    self.current_file_name = file_name_without_extension
                 else:
-                    print(f"File '{file_name}' not found in the database.")
+                    print(f"File '{file_name_without_extension}' not found in the database.")
             else:
                 print("Database strategy not set. Unable to fetch file content.")
         except Exception as e:
@@ -338,8 +365,6 @@ class TextEditor:
         while True:
             new_text = input("")
             if new_text.strip().lower() == '/finish':
-                changes = "Exiting edit mode."
-                self.notify_observers(changes)
                 self.update_file_in_database()
                 break
             elif new_text.strip().lower() == '/hint':
@@ -349,8 +374,6 @@ class TextEditor:
                 self.notify_observers(changes)
             else:
                 self.file_content += new_text + '\n'
-                changes = new_text
-                self.notify_observers(changes)
 
     def update_file_in_database(self):
         if self.database_strategy and self.current_file_name:
@@ -491,7 +514,7 @@ class TextEditor:
             elif user_input in self.commands:
                 self.commands[user_input].execute()
             elif user_input == "2":
-                path = input("Enter path to file:")
+                path = input("Enter path to file: ")
                 self.open_file_by_path(path)
             elif user_input == "3":
                 print("Current text content:", self.file_content)
