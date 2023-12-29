@@ -19,7 +19,7 @@ class SimpleHintStrategy(HintStrategy):
     def update(self, hint_text):
         if hint_text and hint_text.strip().lower() == '/hint':
             self.hint_text = hint_text
-            print(f"Підказка додана: {self.hint_text}")
+            print(f"Hint added: {self.hint_text}")
 
 
 class AdvancedHintStrategy(HintStrategy):

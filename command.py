@@ -26,4 +26,11 @@ class OpenDatabaseFileCommand(Command):
     def execute(self):
         file_name = input("Enter the name of the file: ")
         self.editor.open_database_file(file_name)
-        
+
+
+class ProcessBookmarksCommand:
+    def __init__(self, text_editor):
+        self.text_editor = text_editor
+
+    def execute(self):
+        self.text_editor.process_bookmarks_template_method()

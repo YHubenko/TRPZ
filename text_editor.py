@@ -2,7 +2,7 @@ import os
 from pygments import highlight
 from pygments.formatters.terminal import TerminalFormatter
 from pygments.lexers.python import PythonLexer
-from command import CreateNewFileCommand, DisplayFileListCommand, OpenDatabaseFileCommand
+from command import CreateNewFileCommand, DisplayFileListCommand, OpenDatabaseFileCommand, ProcessBookmarksCommand
 from hint_strategy import SimpleHintStrategy
 from observer import EditorObserver, PathObserver
 
@@ -64,8 +64,27 @@ class TextEditor:
         except Exception as e:
             print(f"An error occurred while opening the file: {e}")
 
-    def set_bookmark_strategy(self, bookmark_strategy):
-        self.bookmark_strategy = bookmark_strategy
+    def process_bookmarks_template_method(self):
+        if not self.current_file_name:
+            print("No file opened. Please open a file first.")
+            return
+
+        lines, bookmark_lines = self.find_bookmark_lines()
+        print("Processing bookmarks...")
+        self.display_bookmarks(lines, bookmark_lines)
+
+    def find_bookmark_lines(self):
+        lines = self.file_content.split('\n')
+        bookmark_lines = [index for index, line in enumerate(lines) if line.strip().lower() == '/bookmark']
+        return lines, bookmark_lines
+
+    def display_bookmarks(self, lines, bookmark_lines):
+        if bookmark_lines:
+            print("\nBookmarks:")
+            for line_number in bookmark_lines:
+                print(f"Line Number: {line_number - 1}, Text: {lines[line_number - 1]}")
+        else:
+            print("No bookmarks found.")
 
     def set_macro_strategy(self, macro_strategy):
         self.macro_strategy = macro_strategy
@@ -142,13 +161,16 @@ class TextEditor:
         if self.database_strategy and self.current_file_name:
             file_name = self.current_file_name
             file_content = self.file_content
-            file_path = self.current_file_path
-            file_name_by_path = os.path.basename(file_path)
-            file_name_without_extension = os.path.splitext(file_name_by_path)[0]
+            current_file_path = None
+            file_name_without_extension = None
+            if self.current_file_path is not None:
+                current_file_path = self.current_file_path
+                file_name_by_path = os.path.basename(current_file_path)
+                file_name_without_extension = os.path.splitext(file_name_by_path)[0]
 
             try:
                 if file_name_without_extension == file_name:
-                    with open(file_path, 'w') as file:
+                    with open(current_file_path, 'w') as file:
                         file.write(self.file_content)
                 self.database_strategy.save_to_database(file_name, file_content)
                 for hint in self.local_hints:
@@ -230,13 +252,13 @@ class TextEditor:
                     if line.strip().lower() == '/finish':
                         break
                     elif line.strip().lower() == '/hint':
-                        hint_text = input("Введіть текст підказки: ")
+                        hint_text = input("Enter text for hint: ")
                         self.local_hint_id += 1
                         self.local_hints.append({
                             'hint_id': self.local_hint_id,
                             'hint_text': hint_text
                         })
-                        print(f"Підказка '{hint_text}' збережена.")
+                        print(f"Hint '{hint_text}' saved.")
                         continue
                     lines.append(line)
 
@@ -264,7 +286,8 @@ class TextEditor:
         print("3. Display current content")
         print("4. Display File List")
         print("5. Open File from Database")
-        print("Type '/hints' to check for current file")
+        print("Type '/bookmarks' to check bookmarks in current file")
+        print("Type '/hints' to check hints for current file")
 
     def run_editor(self, db_strategy):
         self.set_database_strategy(db_strategy)
@@ -273,11 +296,12 @@ class TextEditor:
         self.add_observer(EditorObserver())
         path_observer = PathObserver(self)
         self.add_observer(path_observer)
-        self.display_prompts()
 
         self.set_command("1", CreateNewFileCommand(self))
         self.set_command("4", DisplayFileListCommand(self))
         self.set_command("5", OpenDatabaseFileCommand(self))
+        self.set_command("/bookmarks", ProcessBookmarksCommand(self))
+        self.display_prompts()
 
         while True:
             user_input = input("Enter a command: ")
