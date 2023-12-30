@@ -1,32 +1,12 @@
-awdawdawdawddpoawkd
-dawodkapwodpawokd
-awdpawkdpoawkd
-awdkpawokdpawkd
-cool
-cool
-adwawd
-awd
-awdawd
-YEHOR
-
-from text_editor import TextEditor
-from database_strategy import PostgreSQLDatabaseStrategy
-
-
-def main():
-    db_strategy = PostgreSQLDatabaseStrategy()
-    editor = TextEditor()
-    editor.run_editor(db_strategy)
-
-
-if __name__ == "__main__":
-    main()
-awpofkawf
-kfpoawkfpoawkf
-awfkpawfk
+wakopdpaw
+dkpawodkpoawkd
+pawkdpoawkdoawkdp
+kawp
+dawp
+odkp
+awkdpokawpdkpawodk
+123123123
+fopawkf
+awkfpoawkfp
 awkf
-cool
-/bookmark
-jjfjj
-super
 /bookmark

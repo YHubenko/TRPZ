@@ -9,7 +9,6 @@ from command import CreateNewFileCommand, DisplayFileListCommand, OpenDatabaseFi
     GoToLineCommand
 from hint_strategy import SimpleHintStrategy
 from observer import EditorObserver, PathObserver
-from colorama import Fore, Style
 
 
 class TextEditor:
@@ -175,6 +174,8 @@ class TextEditor:
 
         print("Entering edit mode. Type '/finish' to exit editing.")
 
+        edit_option = input("Do you want to (R)eplace the entire content or (A)dd new text? ").lower()
+
         while True:
             new_text = input("")
             if new_text.strip().lower() == '/finish':
@@ -186,7 +187,11 @@ class TextEditor:
                 changes = f"Hint added: {hint_text}"
                 self.notify_observers(changes)
             else:
-                self.file_content += new_text + '\n'
+                if edit_option == 'r':
+                    self.file_content = new_text + '\n'
+                    edit_option = None
+                else:
+                    self.file_content += new_text + '\n'
 
     def update_file_in_database(self):
         if self.database_strategy and self.current_file_name:
