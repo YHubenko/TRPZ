@@ -1,4 +1,5 @@
 import psycopg2
+from snippet import Snippet
 
 
 class DatabaseStrategy:
@@ -104,3 +105,39 @@ class PostgreSQLDatabaseStrategy(DatabaseStrategy):
         with self.connection.cursor() as cursor:
             cursor.execute("DELETE FROM text_files WHERE id = %s", (file_id,))
         self.connection.commit()
+
+    def create_snippet(self, name, content):
+        try:
+            if not self.connection:
+                raise Exception("Not connected to the database.")
+
+            with self.connection.cursor() as cursor:
+                cursor.execute("INSERT INTO snippets (name, content) VALUES (%s, %s) RETURNING id", (name, content))
+                snippet_id = cursor.fetchone()[0]
+            self.connection.commit()
+            return snippet_id
+
+        except Exception as e:
+            print(f"An error occurred during snippet creation: {e}")
+            return None
+
+    def delete_snippet(self, snippet_id):
+        with self.connection.cursor() as cursor:
+            cursor.execute("DELETE FROM snippets WHERE id = %s", (snippet_id,))
+        self.connection.commit()
+
+    def get_all_snippets(self):
+        try:
+            if not self.connection:
+                raise Exception("Not connected to the database.")
+
+            with self.connection.cursor() as cursor:
+                cursor.execute("SELECT id, name, content FROM snippets")
+                snippets_data = cursor.fetchall()
+
+            snippets = [Snippet(id=snippet[0], name=snippet[1], content=snippet[2]) for snippet in snippets_data]
+            return snippets
+
+        except Exception as e:
+            print(f"An error occurred while fetching snippets: {e}")
+            return None

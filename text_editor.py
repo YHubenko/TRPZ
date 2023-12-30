@@ -282,14 +282,35 @@ class TextEditor:
             print("Type 'back' to go back.")
 
             user_input = input("Enter a snippet command: ")
+            if not self.database_strategy.connection:
+                db_params = {
+                    "dbname": "trpz",
+                    "user": "postgres",
+                    "password": "postgres",
+                    "host": "localhost",
+                    "port": "5432"
+                }
+                self.database_strategy.connect(db_params)
             if user_input == 'back':
                 break
             elif user_input == '1':
-                self.create_snippet()
+
+                name = input("Enter snippet name: ")
+                content = input("Enter snippet content: ")
+                snippet_id = self.database_strategy.create_snippet(name, content)
+                if snippet_id is not None:
+                    print(f"Snippet '{name}' created with ID: {snippet_id}.")
+                else:
+                    print(f"Failed to create snippet '{name}'.")
             elif user_input == '2':
-                self.delete_snippet()
+                snippet_id = int(input("Enter snippet ID to delete: "))
+                self.database_strategy.delete_snippet(snippet_id)
+                print(f"Snippet with ID '{snippet_id}' deleted.")
             elif user_input == '3':
-                self.display_snippets()
+                snippets = self.database_strategy.get_all_snippets()
+                print("\nSnippets:")
+                for snippet in snippets:
+                    print(f"ID: {snippet.id}, Name: {snippet.name}, Content: {snippet.content}")
             else:
                 print("Invalid snippet command. Try again.")
 
