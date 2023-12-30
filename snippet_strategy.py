@@ -1,6 +1,6 @@
 class SnippetStrategy:
     def apply_snippets(self, snippets):
-        pass
+        raise NotImplementedError("Subclasses must implement this method.")
 
 
 class DefaultSnippetStrategy(SnippetStrategy):

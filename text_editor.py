@@ -9,6 +9,7 @@ from command import CreateNewFileCommand, DisplayFileListCommand, OpenDatabaseFi
     GoToLineCommand
 from hint_strategy import SimpleHintStrategy
 from observer import EditorObserver, PathObserver
+from snippet import SnippetFlyweightFactory
 
 
 class TextEditor:
@@ -18,12 +19,10 @@ class TextEditor:
         self.file_content = file_content
         self.encoding = encoding
         self.bookmark_strategy = None
-        self.macro_strategy = None
         self.snippet_strategy = None
         self.hint_strategy = None
         self.database_strategy = None
         self.hints = []
-        self.macros = []
         self.snippets = []
         self.commands = {}
         self.local_hints = []
@@ -116,11 +115,17 @@ class TextEditor:
         else:
             print("No bookmarks found.")
 
-    def set_macro_strategy(self, macro_strategy):
-        self.macro_strategy = macro_strategy
-
     def set_snippet_strategy(self, snippet_strategy):
         self.snippet_strategy = snippet_strategy
+        self.snippet_strategy.set_snippets(self.snippets)
+
+    def apply_snippets(self):
+        if self.snippet_strategy:
+            for snippet_info in self.snippets:
+                name = snippet_info.get('name')
+                content = snippet_info.get('content')
+                snippet = SnippetFlyweightFactory.get_snippet(name, content)
+                self.snippet_strategy.apply_snippet(snippet)
 
     def set_hint_strategy(self, hint_strategy):
         self.hint_strategy = hint_strategy
@@ -221,12 +226,26 @@ class TextEditor:
                 self.local_hints.append({'hint_text': hint_text})
                 changes = f"Hint added: {hint_text}"
                 self.notify_observers(changes)
+            elif new_text.strip().lower() == '/snippet':
+                snippet_name = input("Enter the name of the snippet to insert: ")
+                snippet_content = self.get_snippet_content(snippet_name)
+                if snippet_content:
+                    self.file_content += snippet_content + '\n'
+                    print(f"Snippet '{snippet_name}' inserted.")
+                else:
+                    print(f"Snippet '{snippet_name}' not found.")
             else:
                 if edit_option == 'r':
                     self.file_content = new_text + '\n'
                     edit_option = None
                 else:
                     self.file_content += new_text + '\n'
+
+    def get_snippet_content(self, snippet_name):
+        for snippet in self.snippets:
+            if snippet.get('name') == snippet_name:
+                return snippet.get('content')
+        return None
 
     def update_file_in_database(self):
         if self.database_strategy and self.current_file_name:
@@ -254,13 +273,49 @@ class TextEditor:
         else:
             print("Database strategy not set or no file is currently open.")
 
-    def execute_macros(self):
-        if self.macro_strategy:
-            self.macro_strategy.execute_macros(self.macros)
+    def manage_snippets(self):
+        while True:
+            print("\nSnippet Management:")
+            print("1. Create a Snippet")
+            print("2. Delete a Snippet")
+            print("3. Display Snippets")
+            print("Type 'back' to go back.")
 
-    def apply_snippets(self):
-        if self.snippet_strategy:
-            self.snippet_strategy.apply_snippets(self.snippets)
+            user_input = input("Enter a snippet command: ")
+            if user_input == 'back':
+                break
+            elif user_input == '1':
+                self.create_snippet()
+            elif user_input == '2':
+                self.delete_snippet()
+            elif user_input == '3':
+                self.display_snippets()
+            else:
+                print("Invalid snippet command. Try again.")
+
+    def create_snippet(self):
+        name = input("Enter snippet name: ")
+        content = input("Enter snippet content: ")
+        self.snippets.append({'name': name, 'content': content})
+        print(f"Snippet '{name}' created.")
+
+    def delete_snippet(self):
+        name = input("Enter snippet name to delete: ")
+        for snippet in self.snippets:
+            if snippet.get('name') == name:
+                self.snippets.remove(snippet)
+                print(f"Snippet '{name}' deleted.")
+                break
+        else:
+            print(f"Snippet '{name}' not found.")
+
+    def display_snippets(self):
+        if self.snippets:
+            print("\nSnippets:")
+            for snippet in self.snippets:
+                print(f"Name: {snippet['name']}, Content: {snippet['content']}")
+        else:
+            print("No snippets found.")
 
     def get_hints(self):
         if self.hint_strategy:
@@ -329,6 +384,15 @@ class TextEditor:
                         })
                         print(f"Hint '{hint_text}' saved.")
                         continue
+                    elif line.strip().lower() == '/snippet':
+                        snippet_name = input("Enter the name of the snippet to insert: ")
+                        snippet_content = self.get_snippet_content(snippet_name)
+                        if snippet_content:
+                            lines.append(snippet_content)
+                            print(f"Snippet '{snippet_name}' inserted.")
+                        else:
+                            print(f"Snippet '{snippet_name}' not found.")
+                        continue
                     lines.append(line)
 
                 self.file_content = '\n'.join(lines)
@@ -360,6 +424,7 @@ class TextEditor:
         print("Type 'hints' to check hints for the current file")
         print("Type 'edit' to edit current file")
         print("Type 'delete' to delete files")
+        print("Type 'snippets' to manage snippets")
 
     def run_editor(self, db_strategy):
         self.set_database_strategy(db_strategy)
@@ -406,6 +471,8 @@ class TextEditor:
                     print("Choose a file first!")
             elif user_input == "goto":
                 self.go_to_line_template_method()
+            elif user_input == "snippets":
+                self.manage_snippets()
             else:
                 print("Unknown command. Type 'menu' for the menu or 'exit' to exit.")
 
