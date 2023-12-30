@@ -94,3 +94,13 @@ class PostgreSQLDatabaseStrategy(DatabaseStrategy):
             return [{'hint_id': hint[0], 'hint_text': hint[1]} for hint in hints]
         else:
             raise Exception("Not connected to the database.")
+
+    def delete_all_files(self):
+        with self.connection.cursor() as cursor:
+            cursor.execute("DELETE FROM text_files")
+        self.connection.commit()
+
+    def delete_file(self, file_id):
+        with self.connection.cursor() as cursor:
+            cursor.execute("DELETE FROM text_files WHERE id = %s", (file_id,))
+        self.connection.commit()

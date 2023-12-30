@@ -167,6 +167,41 @@ class TextEditor:
             print(f"An error occurred while getting file content: {e}")
             return None
 
+    def delete_files_template_method(self, file_name=None):
+        try:
+            if file_name and file_name.lower() != "/cancel":
+                self.delete_file_from_database(file_name)
+            elif file_name.lower() == "/cancel":
+                print("Deletion canceled.")
+            else:
+                self.delete_all_files_from_database()
+                print("All files deleted successfully from the database.")
+        except Exception as e:
+            print(f"An error occurred while deleting files from the database: {e}")
+
+    def delete_all_files_from_database(self):
+        try:
+            if self.database_strategy:
+                self.database_strategy.delete_all_files()
+            else:
+                print("Database strategy not set. Unable to delete files.")
+        except Exception as e:
+            print(f"An error occurred while deleting all files from the database: {e}")
+
+    def delete_file_from_database(self, file_name):
+        try:
+            if self.database_strategy:
+                file_id = self.database_strategy.get_file_id(file_name)
+                if file_id is not None:
+                    self.database_strategy.delete_file(file_id)
+                    print(f"File '{file_name}' deleted successfully from the database.")
+                else:
+                    print(f"File '{file_name}' not found in the database.")
+            else:
+                print("Database strategy not set. Unable to delete the file.")
+        except Exception as e:
+            print(f"An error occurred while deleting the file from the database: {e}")
+
     def edit_mode(self):
         if not self.current_file_name:
             print("No file opened. Please open a file first.")
@@ -324,6 +359,7 @@ class TextEditor:
         print("Type 'bookmarks' to check bookmarks in the current file")
         print("Type 'hints' to check hints for the current file")
         print("Type 'edit' to edit current file")
+        print("Type 'delete' to delete files")
 
     def run_editor(self, db_strategy):
         self.set_database_strategy(db_strategy)
@@ -358,6 +394,9 @@ class TextEditor:
             elif user_input == "exit":
                 print("Exiting the text editor.")
                 break
+            elif user_input == "delete":
+                file_name = input("Enter the name of the file to delete (leave blank to delete all or type '/cancel' to cancel): ")
+                self.delete_files_template_method(file_name)
             elif user_input == "hints":
                 if self.current_file_id:
                     hints = self.database_strategy.get_hints_by_file_id(self.current_file_id)
