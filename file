@@ -25,3 +25,45 @@ awpofkawf
 kfpoawkfpoawkf
 awfkpawfk
 awkf
+cool
+/bookmark
+jjfjj
+super
+/bookmark
+cool
+Highlighted Content:
+1: awdawdawdawddpoawkd
+2: dawodkapwodpawokd
+3: awdpawkdpoawkd
+4: awdkpawokdpawkd
+5: cool
+6: cool
+7: adwawd
+8: awd
+9: awdawd
+10: YEHOR
+11: 
+12: from text_editor import TextEditor
+13: from database_strategy import PostgreSQLDatabaseStrategy
+14: 
+15: 
+16: def main():
+17:     db_strategy = PostgreSQLDatabaseStrategy()
+18:     editor = TextEditor()
+19:     editor.run_editor(db_strategy)
+20: 
+21: 
+22: if __name__ == "__main__":
+23:     main()
+24: awpofkawf
+25: kfpoawkfpoawkf
+26: awfkpawfk
+27: awkf
+28: cool
+29: /bookmark
+30: jjfjj
+31: super
+32: /bookmark
+33: cool
+34: 
+Enter a command: 

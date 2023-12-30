@@ -1,10 +1,15 @@
 import os
+
 from pygments import highlight
 from pygments.formatters.terminal import TerminalFormatter
 from pygments.lexers.python import PythonLexer
-from command import CreateNewFileCommand, DisplayFileListCommand, OpenDatabaseFileCommand, ProcessBookmarksCommand
+from pygments.styles import get_style_by_name
+
+from command import CreateNewFileCommand, DisplayFileListCommand, OpenDatabaseFileCommand, ProcessBookmarksCommand, \
+    GoToLineCommand
 from hint_strategy import SimpleHintStrategy
 from observer import EditorObserver, PathObserver
+from colorama import Fore, Style
 
 
 class TextEditor:
@@ -19,7 +24,6 @@ class TextEditor:
         self.hint_strategy = None
         self.database_strategy = None
         self.hints = []
-        self.bookmarks = []
         self.macros = []
         self.snippets = []
         self.commands = {}
@@ -28,6 +32,7 @@ class TextEditor:
         self.current_file_path = None
         self.local_hint_id = 0
         self.observers = [EditorObserver()]
+        self.pygments_style = get_style_by_name('default').styles
 
     def add_observer(self, observer):
         self.observers.append(observer)
@@ -64,6 +69,33 @@ class TextEditor:
         except Exception as e:
             print(f"An error occurred while opening the file: {e}")
 
+    def go_to_line_template_method(self):
+        try:
+            line_number = int(input("Enter the line number to go to: "))
+            self.display_highlighted_content(self.file_content.split('\n'), line_number)
+        except ValueError:
+            print("Invalid input. Please enter a valid line number.")
+
+    def display_highlighted_content(self, lines, line_number):
+        try:
+            line_number = int(line_number)
+
+            highlighted_lines = []
+            for i, line in enumerate(lines, start=1):
+                if i == line_number:
+                    highlighted_lines.append(f"\033[93m{i}: {line}\033[0m")
+                elif not any(code in line for code in ('\033[93m', '\033[0m')):
+                    # Apply syntax highlighting only if there are no existing escape codes
+                    highlighted_line = highlight(line, PythonLexer(), TerminalFormatter())
+                    highlighted_lines.append(f"{i}: {highlighted_line.rstrip()}")
+                else:
+                    highlighted_lines.append(f"{i}: {line}")
+
+            print("\nHighlighted Content:")
+            print("\n".join(highlighted_lines).strip())
+        except ValueError:
+            print("Invalid input. Please enter a valid line number.")
+
     def process_bookmarks_template_method(self):
         if not self.current_file_name:
             print("No file opened. Please open a file first.")
@@ -82,7 +114,7 @@ class TextEditor:
         if bookmark_lines:
             print("\nBookmarks:")
             for line_number in bookmark_lines:
-                print(f"Line Number: {line_number - 1}, Text: {lines[line_number - 1]}")
+                print(f"Line Number: {line_number}, Text: {lines[line_number - 1]}")
         else:
             print("No bookmarks found.")
 
@@ -169,6 +201,8 @@ class TextEditor:
                 file_name_without_extension = os.path.splitext(file_name_by_path)[0]
 
             try:
+                file_content = file_content.replace('/bookmark', '')
+
                 if file_name_without_extension == file_name:
                     with open(current_file_path, 'w') as file:
                         file.write(self.file_content)
@@ -180,10 +214,6 @@ class TextEditor:
                 print(f"An error occurred while saving to the database: {e}")
         else:
             print("Database strategy not set or no file is currently open.")
-
-    def process_bookmarks(self):
-        if self.bookmark_strategy:
-            self.bookmark_strategy.process_bookmarks(self.bookmarks)
 
     def execute_macros(self):
         if self.macro_strategy:
@@ -286,8 +316,9 @@ class TextEditor:
         print("3. Display current content")
         print("4. Display File List")
         print("5. Open File from Database")
-        print("Type '/bookmarks' to check bookmarks in current file")
-        print("Type '/hints' to check hints for current file")
+        print("Type '/goto' to go to certain line")
+        print("Type '/bookmarks' to check bookmarks in the current file")
+        print("Type '/hints' to check hints for the current file")
 
     def run_editor(self, db_strategy):
         self.set_database_strategy(db_strategy)
@@ -301,6 +332,7 @@ class TextEditor:
         self.set_command("4", DisplayFileListCommand(self))
         self.set_command("5", OpenDatabaseFileCommand(self))
         self.set_command("/bookmarks", ProcessBookmarksCommand(self))
+        self.set_command("/goto", GoToLineCommand(self))
         self.display_prompts()
 
         while True:
@@ -328,10 +360,10 @@ class TextEditor:
                         print(f"Hint ID: {hint['hint_id']}, Hint Text: {hint['hint_text']}")
                 else:
                     print("Choose a file first!")
+            elif user_input == "/goto":
+                self.go_to_line_template_method()
             else:
                 print("Unknown command. Type '/menu' for the menu or '/exit' to exit.")
-
-        self.run_editor(db_strategy)
 
     def set_command(self, command_key, command):
         self.commands[command_key] = command

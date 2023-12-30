@@ -34,3 +34,11 @@ class ProcessBookmarksCommand:
 
     def execute(self):
         self.text_editor.process_bookmarks_template_method()
+
+
+class GoToLineCommand:
+    def __init__(self, editor):
+        self.text_editor = editor
+
+    def execute(self):
+        self.text_editor.go_to_line_template_method()
