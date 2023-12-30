@@ -83,13 +83,12 @@ class TextEditor:
             highlighted_lines = []
             for i, line in enumerate(lines, start=1):
                 if i == line_number:
-                    highlighted_lines.append(f"\033[93m{i}: {line}\033[0m")
+                    highlighted_lines.append(f"\033[93m{line}\033[0m")
                 elif not any(code in line for code in ('\033[93m', '\033[0m')):
-                    # Apply syntax highlighting only if there are no existing escape codes
                     highlighted_line = highlight(line, PythonLexer(), TerminalFormatter())
-                    highlighted_lines.append(f"{i}: {highlighted_line.rstrip()}")
+                    highlighted_lines.append(highlighted_line.rstrip())
                 else:
-                    highlighted_lines.append(f"{i}: {line}")
+                    highlighted_lines.append(line)
 
             print("\nHighlighted Content:")
             print("\n".join(highlighted_lines).strip())
@@ -306,8 +305,8 @@ class TextEditor:
 
     def display_prompts(self):
         print("\nWelcome to the Text Editor!")
-        print("Type '/menu' to display the menu.")
-        print("Type '/exit' to exit.")
+        print("Type 'menu' to display the menu.")
+        print("Type 'exit' to exit.")
 
     def display_menu(self):
         print("\nMenu:")
@@ -316,9 +315,10 @@ class TextEditor:
         print("3. Display current content")
         print("4. Display File List")
         print("5. Open File from Database")
-        print("Type '/goto' to go to certain line")
-        print("Type '/bookmarks' to check bookmarks in the current file")
-        print("Type '/hints' to check hints for the current file")
+        print("Type 'goto' to go to certain line")
+        print("Type 'bookmarks' to check bookmarks in the current file")
+        print("Type 'hints' to check hints for the current file")
+        print("Type 'edit' to edit current file")
 
     def run_editor(self, db_strategy):
         self.set_database_strategy(db_strategy)
@@ -331,14 +331,14 @@ class TextEditor:
         self.set_command("1", CreateNewFileCommand(self))
         self.set_command("4", DisplayFileListCommand(self))
         self.set_command("5", OpenDatabaseFileCommand(self))
-        self.set_command("/bookmarks", ProcessBookmarksCommand(self))
-        self.set_command("/goto", GoToLineCommand(self))
+        self.set_command("bookmarks", ProcessBookmarksCommand(self))
+        self.set_command("goto", GoToLineCommand(self))
         self.display_prompts()
 
         while True:
             user_input = input("Enter a command: ")
 
-            if user_input == "/menu":
+            if user_input == "menu":
                 self.display_menu()
             elif user_input in self.commands:
                 self.commands[user_input].execute()
@@ -348,22 +348,22 @@ class TextEditor:
             elif user_input == "3":
                 print("Current text content:")
                 print(highlight(self.file_content, PythonLexer(), TerminalFormatter()))
-            elif user_input == "/edit":
+            elif user_input == "edit":
                 self.edit_mode()
-            elif user_input == "/exit":
+            elif user_input == "exit":
                 print("Exiting the text editor.")
                 break
-            elif user_input == "/hints":
+            elif user_input == "hints":
                 if self.current_file_id:
                     hints = self.database_strategy.get_hints_by_file_id(self.current_file_id)
                     for hint in hints:
                         print(f"Hint ID: {hint['hint_id']}, Hint Text: {hint['hint_text']}")
                 else:
                     print("Choose a file first!")
-            elif user_input == "/goto":
+            elif user_input == "goto":
                 self.go_to_line_template_method()
             else:
-                print("Unknown command. Type '/menu' for the menu or '/exit' to exit.")
+                print("Unknown command. Type 'menu' for the menu or 'exit' to exit.")
 
     def set_command(self, command_key, command):
         self.commands[command_key] = command
